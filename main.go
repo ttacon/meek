@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"strconv"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -28,7 +29,10 @@ func main() {
 		return
 	}
 
-	go monitorTxs(db)
+	events := make(chan keyEvent)
+
+	go keyListener(events)
+	go monitorTxs(db, events)
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -86,7 +90,24 @@ func drawTitles(row int) {
 	termbox.Flush()
 }
 
-func monitorTxs(db *sql.DB) {
+func keyListener(events chan keyEvent) {
+	for {
+		event := termbox.PollEvent()
+		if event.Key == termbox.KeyCtrlC {
+			go func() {
+				events <- quitEvent
+			}()
+		}
+	}
+}
+
+type keyEvent int
+
+const (
+	quitEvent keyEvent = iota
+)
+
+func monitorTxs(db *sql.DB, events chan keyEvent) {
 	err := termbox.Init()
 	if err != nil {
 		panic(err)
@@ -96,8 +117,22 @@ func monitorTxs(db *sql.DB) {
 	drawTitles(1)
 	count := 0
 
+	oldRowNum := 0
+	rowStart := 4 // incase we want to move stuff later?
+	ww, _ := termbox.Size()
+
+	ticker := time.Tick(time.Second)
+
 	for {
-		<-time.After(time.Second)
+		select {
+		case eve := <-events:
+			if eve == quitEvent {
+				return
+			}
+		case <-ticker:
+
+		}
+
 		count++
 		if count > 10 {
 			break
@@ -106,6 +141,15 @@ func monitorTxs(db *sql.DB) {
 		if err != nil {
 			fmt.Println("failed to query transactions:", err)
 			continue
+		}
+
+		rowNum := rowStart
+
+		// clear old rows
+		for i := rowStart; i < rowStart+oldRowNum; i++ {
+			for x := 0; x < ww; x++ {
+				termbox.SetCell(x, i, ' ', colWhite, colDef)
+			}
 		}
 
 		// ID, State, Started, MemoryUsed
@@ -123,8 +167,47 @@ func monitorTxs(db *sql.DB) {
 				break
 			}
 
-		}
-		rows.Close()
+			// add the Transaction ID
+			cursor := 2
+			for _, run := range i.ID {
+				termbox.SetCell(
+					cursor,
+					rowNum,
+					run,
+					termbox.ColorWhite,
+					termbox.ColorDefault)
+				cursor++
+			}
 
+			cursor = 27
+			for _, run := range i.State {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+			}
+
+			// it's plus 25 from previous cursor position each time
+			cursor = 52
+			for _, run := range string(i.Started) {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+			}
+
+			cursor = 77
+			for _, run := range strconv.FormatUint(i.LockMemoryBytes, 10) {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+			}
+
+			rowNum++
+		}
+		oldRowNum = rowNum - rowStart
+		rows.Close()
+		termbox.Flush()
 	}
 }
+
+// term colors
+var (
+	colWhite = termbox.ColorWhite
+	colDef   = termbox.ColorDefault
+)
