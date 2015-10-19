@@ -38,27 +38,27 @@ type InnoDBTransaction struct {
 	State   string `mysql:"trx_state"`
 	Started []byte // Currently we won't parse this due to time zone fun
 	// it will be added later when we deal with timezones in the database tables?
-	RequestedLockID      *sql.NullString `mysql:"trx_requested_lock_id"`
-	WaitStarted          []byte          `mysql:"trx_wait_started"`
-	Weight               uint64          `mysql:"trx_weight"`
-	MySQLThreadID        uint64          `mysql:"trx_mysql_thread_id"`
-	Query                *sql.NullString `mysql:"trx_query"`
-	OperationState       *sql.NullString `mysql:"trx_operation_state"`
-	TablesInUse          uint64          `mysql:"trx_tables_in_use"`
-	TablesLocked         uint64          `mysql:"trx_tables_locked"`
-	LockStructs          uint64          `mysql:"trx_lock_structs"`
-	LockMemoryBytes      uint64          `mysql:"trx_lock_memory_bytes"`
-	RowsLocked           uint64          `mysql:"trx_rows_locked"`
-	RowsModified         uint64          `mysql:"trx_rows_modified"`
-	ConcurrencyTickets   uint64          `mysql:"trx_concurrency_tickets"`
-	IsolationLevel       string          `mysql:"trx_isolation_level"`
-	UniqueChecks         int32           `mysql:"trx_unique_checks"`
-	ForeignKeyChecks     int32           `mysql:"trx_foreign_key_checks"`
-	LastForeignKeyError  *sql.NullString `mysql:"trx_last_foreign_key_error"`
-	AdaptiveHashLatched  int32           `mysql:"trx_adaptive_hash_latched"`
-	AdaptiveHashTimeout  uint64          `mysql:"trx_adaptive_hash_timeout"`
-	IsReadOnly           int32           `mysql:"trx_is_read_only"`
-	AutocommitNonLocking int32           `mysql:"trx_autocommit_non_locking"`
+	RequestedLockID      sql.NullString `mysql:"trx_requested_lock_id"`
+	WaitStarted          []byte         `mysql:"trx_wait_started"`
+	Weight               uint64         `mysql:"trx_weight"`
+	MySQLThreadID        uint64         `mysql:"trx_mysql_thread_id"`
+	Query                sql.NullString `mysql:"trx_query"`
+	OperationState       sql.NullString `mysql:"trx_operation_state"`
+	TablesInUse          uint64         `mysql:"trx_tables_in_use"`
+	TablesLocked         uint64         `mysql:"trx_tables_locked"`
+	LockStructs          uint64         `mysql:"trx_lock_structs"`
+	LockMemoryBytes      uint64         `mysql:"trx_lock_memory_bytes"`
+	RowsLocked           uint64         `mysql:"trx_rows_locked"`
+	RowsModified         uint64         `mysql:"trx_rows_modified"`
+	ConcurrencyTickets   uint64         `mysql:"trx_concurrency_tickets"`
+	IsolationLevel       string         `mysql:"trx_isolation_level"`
+	UniqueChecks         int32          `mysql:"trx_unique_checks"`
+	ForeignKeyChecks     int32          `mysql:"trx_foreign_key_checks"`
+	LastForeignKeyError  sql.NullString `mysql:"trx_last_foreign_key_error"`
+	AdaptiveHashLatched  int32          `mysql:"trx_adaptive_hash_latched"`
+	AdaptiveHashTimeout  uint64         `mysql:"trx_adaptive_hash_timeout"`
+	IsReadOnly           int32          `mysql:"trx_is_read_only"`
+	AutocommitNonLocking int32          `mysql:"trx_autocommit_non_locking"`
 }
 
 /*
@@ -84,19 +84,19 @@ type InnoDBTransaction struct {
 */
 
 type ProcessInfo struct {
-	ID          int64           `mysql:"ID"`
-	User        string          `mysql:"USER"`
-	Host        string          `mysql:"HOST"`
-	DB          *sql.NullString `mysql:"DB"`
-	Command     string          `mysql:"COMMAND"`
-	Time        int32           `mysql:"TIME"`
-	State       *sql.NullString `mysql:"STATE"`
-	Info        *sql.NullString `mysql:"INFO"`
-	TimeMS      float64         `mysql:"TIME_MS"`
-	Stage       int8            `mysql:"STAGE"`
-	MaxStage    int8            `mysql:"MAX_STAGE"`
-	Progress    string          `mysql:"PROGRESS"`
-	MemoryUsed  int32           `mysql:"MEMORY_USED"`
-	ExaminedRow int32           `mysql:"EXAMINED_ROW"`
-	QueryID     int64           `mysql:"QUERY_ROW"`
+	ID          int64          `mysql:"ID"`
+	User        string         `mysql:"USER"`
+	Host        string         `mysql:"HOST"`
+	DB          sql.NullString `mysql:"DB"`
+	Command     string         `mysql:"COMMAND"`
+	Time        int32          `mysql:"TIME"`
+	State       sql.NullString `mysql:"STATE"`
+	Info        sql.NullString `mysql:"INFO"`
+	TimeMS      float64        `mysql:"TIME_MS"`
+	Stage       int8           `mysql:"STAGE"`
+	MaxStage    int8           `mysql:"MAX_STAGE"`
+	Progress    string         `mysql:"PROGRESS"`
+	MemoryUsed  int32          `mysql:"MEMORY_USED"`
+	ExaminedRow int32          `mysql:"EXAMINED_ROW"`
+	QueryID     int64          `mysql:"QUERY_ROW"`
 }

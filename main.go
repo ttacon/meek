@@ -4,29 +4,46 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/nsf/termbox-go"
 	"github.com/ttacon/innotop/innotop"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 var (
 	db *sql.DB
 
 	// flags
-	username = flag.String("u", "", "username")
-	password = flag.String("p", "", "password")
+	username          = flag.String("u", "", "username")
+	password          = flag.String("-password", "", "password")
+	promptForPassword = flag.Bool("p", false, "prompt for password")
 )
 
 func main() {
 	flag.Parse()
 
+	passwd := *password
+	if *promptForPassword {
+		fmt.Print("password:")
+		passwdBytes, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+		if err != nil {
+			fmt.Println("failed to read password:", err)
+			os.Exit(1)
+		}
+		passwd = string(passwdBytes)
+	}
+
 	var err error
-	if db, err = sql.Open("mysql", fmt.Sprintf("%s:%s@/", *username, *password)); err != nil {
+	if db, err = sql.Open("mysql", fmt.Sprintf("%s:%s@/", *username, passwd)); err != nil {
 		fmt.Println("failed to connect to db:", err)
-		return
+		os.Exit(1)
+	} else if err = db.Ping(); err != nil {
+		fmt.Println("failed to connect to db:", err)
+		os.Exit(1)
 	}
 
 	events := make(chan keyEvent)
@@ -56,15 +73,43 @@ type columnInfo struct {
 	width int
 }
 
-var columns = []columnInfo{
-	columnInfo{"ID", 20},
-	columnInfo{"State", 20},
+// ID, State, Started, Mem, Op State, RowsLocked, ROnly, Query
+var txColumns = []columnInfo{
+	columnInfo{"ID", 10},
+	columnInfo{"State", 14},
 	columnInfo{"Started", 20},
-	columnInfo{"MemoryUsed", 20},
+	columnInfo{"Mem", 11},
+	columnInfo{"Op State", 10},
+	columnInfo{"RowsLocked", 11},
+	columnInfo{"ROnly", 6},
+	columnInfo{"Query", 15},
 }
 
-func drawTitles(row int) {
+// CXN        Cmd    ID         User  Host      DB   Time   Query
+var qList = []columnInfo{
+	columnInfo{"ID", 11},
+	columnInfo{"Cmd", 7},
+	columnInfo{"CXN", 11},
+	columnInfo{"User", 8},
+	columnInfo{"Host", 16},
+	columnInfo{"DB", 8},
+	columnInfo{"Time", 8},
+	columnInfo{"Query", 30},
+}
+
+func drawTitles(typ keyEvent, row int) {
 	xCursor := 2
+	columns := txColumns
+
+	w, _ := termbox.Size()
+	for i := 0; i < w; i++ {
+		termbox.SetCell(i, 1, ' ', colWhite, colDef)
+	}
+
+	if typ == queryList {
+		columns = qList
+	}
+
 	for _, col := range columns {
 		colWidth := 0
 		for _, run := range col.name {
@@ -80,7 +125,7 @@ func drawTitles(row int) {
 		}
 
 		// after every column add padding
-		xCursor += (5 + (col.width - colWidth))
+		xCursor += (1 + (col.width - colWidth))
 	}
 
 	for i := 0; i < xCursor; i++ {
@@ -120,8 +165,7 @@ const (
 )
 
 func monitorTxs(db *sql.DB, events chan keyEvent) mon {
-	drawTitles(1)
-	count := 0
+	drawTitles(txList, 1)
 
 	oldRowNum := 0
 	rowStart := 4 // incase we want to move stuff later?
@@ -142,10 +186,6 @@ func monitorTxs(db *sql.DB, events chan keyEvent) mon {
 
 		}
 
-		count++
-		if count > 10 {
-			break
-		}
 		rows, err := db.Query("select * from information_schema.INNODB_TRX")
 		if err != nil {
 			fmt.Println("failed to query transactions:", err)
@@ -156,7 +196,7 @@ func monitorTxs(db *sql.DB, events chan keyEvent) mon {
 
 		clearRows(rowStart, rowStart+oldRowNum, ww)
 
-		// ID, State, Started, MemoryUsed
+		// ID, State, Started, MemoryUsed, Op State, RowsLocked, ROnly, Query
 		for rows.Next() {
 			var i innotop.InnoDBTransaction
 			if err = rows.Scan(
@@ -174,32 +214,72 @@ func monitorTxs(db *sql.DB, events chan keyEvent) mon {
 			// add the Transaction ID
 			cursor := 2
 			for _, run := range i.ID {
-				termbox.SetCell(
-					cursor,
-					rowNum,
-					run,
-					termbox.ColorWhite,
-					termbox.ColorDefault)
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
 				cursor++
+				if cursor == 10 {
+					break
+				}
 			}
 
-			cursor = 27
+			cursor = 13
 			for _, run := range i.State {
 				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
 				cursor++
+				if cursor == 26 {
+					break
+				}
 			}
 
-			// it's plus 25 from previous cursor position each time
-			cursor = 52
+			cursor = 28
 			for _, run := range string(i.Started) {
 				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
 				cursor++
+				if cursor == 49 {
+					break
+				}
 			}
 
-			cursor = 77
+			cursor = 49
 			for _, run := range strconv.FormatUint(i.LockMemoryBytes, 10) {
 				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
 				cursor++
+				if cursor == 59 {
+					break
+				}
+			}
+
+			cursor = 61
+			for _, run := range i.OperationState.String {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+				if cursor == 70 {
+					break
+				}
+			}
+
+			cursor = 72
+			for _, run := range strconv.FormatUint(i.RowsLocked, 10) {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+				if cursor == 76 {
+					break
+				}
+			}
+
+			cursor = 84
+			isReadOnly := 'Y'
+			if i.IsReadOnly == 0 {
+				isReadOnly = 'N'
+			}
+			termbox.SetCell(cursor, rowNum, isReadOnly, colWhite, colDef)
+
+			cursor = 91
+			for _, run := range i.Query.String {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+				if cursor == ww-1 {
+					break
+				}
 			}
 
 			rowNum++
@@ -227,13 +307,11 @@ var (
 )
 
 func monitorQueries(db *sql.DB, events chan keyEvent) mon {
-	drawTitles(1)
-	count := 0
+	drawTitles(queryList, 1)
 
 	oldRowNum := 0
 	rowStart := 4 // incase we want to move stuff later?
 	ww, _ := termbox.Size()
-
 	ticker := time.Tick(time.Second)
 
 	for {
@@ -249,10 +327,6 @@ func monitorQueries(db *sql.DB, events chan keyEvent) mon {
 
 		}
 
-		count++
-		if count > 10 {
-			break
-		}
 		rows, err := db.Query("select * from information_schema.PROCESSLIST")
 		if err != nil {
 			fmt.Println("failed to query transactions:", err)
@@ -277,33 +351,83 @@ func monitorQueries(db *sql.DB, events chan keyEvent) mon {
 				break
 			}
 
-			// add the Transaction ID
-			cursor := 2
-			for _, run := range strconv.FormatInt(i.ID, 10) {
-				termbox.SetCell(
-					cursor,
-					rowNum,
-					run,
-					termbox.ColorWhite,
-					termbox.ColorDefault)
-				cursor++
+			if i.Info.String == "select * from information_schema.PROCESSLIST" {
+				continue
 			}
 
-			cursor = 27
+			// add the Transaction ID
+			cursor := 2
+			for _, run := range strconv.FormatInt(i.QueryID, 10) {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+
+				if cursor == 12 {
+					break
+				}
+			}
+
+			cursor = 14
+			for _, run := range i.Command {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+
+				if cursor == 20 {
+					break
+				}
+			}
+
+			cursor = 22
+			for _, run := range i.State.String {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+
+				if cursor == 32 {
+					break
+				}
+			}
+
+			cursor = 34
 			for _, run := range i.User {
 				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
 				cursor++
+
+				if cursor == 31 {
+					break
+				}
 			}
 
-			// it's plus 25 from previous cursor position each time
-			cursor = 52
-			for _, run := range string(i.Host) {
+			cursor = 43
+			for _, run := range i.Host {
 				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
 				cursor++
+
+				if cursor == 58 {
+					break
+				}
 			}
 
-			cursor = 77
-			for _, run := range strconv.FormatInt(int64(i.MemoryUsed), 10) {
+			cursor = 60
+			for _, run := range i.DB.String {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+
+				if cursor == 67 {
+					break
+				}
+			}
+
+			cursor = 69
+			for _, run := range tim(i.Time) {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+
+				if cursor == 77 {
+					break
+				}
+			}
+
+			cursor = 79
+			for _, run := range i.Info.String {
 				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
 				cursor++
 			}
@@ -316,4 +440,24 @@ func monitorQueries(db *sql.DB, events chan keyEvent) mon {
 	}
 
 	return nil
+}
+
+func tim(sec32 int32) string {
+	sec := int(sec32)
+	var seconds, mins, hours int
+	if sec > 0 {
+		seconds = sec % 60
+		sec = sec / 60
+	}
+
+	if sec > 0 {
+		mins = sec % 60
+		sec = sec / 60
+	}
+
+	if sec > 0 {
+		hours = sec % 60
+	}
+
+	return fmt.Sprintf("%0.2d:%0.2d:%0.2d", hours, mins, seconds)
 }
