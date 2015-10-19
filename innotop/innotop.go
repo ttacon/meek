@@ -60,3 +60,43 @@ type InnoDBTransaction struct {
 	IsReadOnly           int32           `mysql:"trx_is_read_only"`
 	AutocommitNonLocking int32           `mysql:"trx_autocommit_non_locking"`
 }
+
+/*
++---------------+---------------+------+-----+---------+-------+
+| Field         | Type          | Null | Key | Default | Extra |
++---------------+---------------+------+-----+---------+-------+
+| ID            | bigint(4)     | NO   |     | 0       |       |
+| USER          | varchar(128)  | NO   |     |         |       |
+| HOST          | varchar(64)   | NO   |     |         |       |
+| DB            | varchar(64)   | YES  |     | NULL    |       |
+| COMMAND       | varchar(16)   | NO   |     |         |       |
+| TIME          | int(7)        | NO   |     | 0       |       |
+| STATE         | varchar(64)   | YES  |     | NULL    |       |
+| INFO          | longtext      | YES  |     | NULL    |       |
+| TIME_MS       | decimal(22,3) | NO   |     | 0.000   |       |
+| STAGE         | tinyint(2)    | NO   |     | 0       |       |
+| MAX_STAGE     | tinyint(2)    | NO   |     | 0       |       |
+| PROGRESS      | decimal(7,3)  | NO   |     | 0.000   |       |
+| MEMORY_USED   | int(7)        | NO   |     | 0       |       |
+| EXAMINED_ROWS | int(7)        | NO   |     | 0       |       |
+| QUERY_ID      | bigint(4)     | NO   |     | 0       |       |
++---------------+---------------+------+-----+---------+-------+
+*/
+
+type ProcessInfo struct {
+	ID          int64           `mysql:"ID"`
+	User        string          `mysql:"USER"`
+	Host        string          `mysql:"HOST"`
+	DB          *sql.NullString `mysql:"DB"`
+	Command     string          `mysql:"COMMAND"`
+	Time        int32           `mysql:"TIME"`
+	State       *sql.NullString `mysql:"STATE"`
+	Info        *sql.NullString `mysql:"INFO"`
+	TimeMS      float64         `mysql:"TIME_MS"`
+	Stage       int8            `mysql:"STAGE"`
+	MaxStage    int8            `mysql:"MAX_STAGE"`
+	Progress    string          `mysql:"PROGRESS"`
+	MemoryUsed  int32           `mysql:"MEMORY_USED"`
+	ExaminedRow int32           `mysql:"EXAMINED_ROW"`
+	QueryID     int64           `mysql:"QUERY_ROW"`
+}

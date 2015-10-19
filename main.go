@@ -30,25 +30,25 @@ func main() {
 	}
 
 	events := make(chan keyEvent)
+	if err = termbox.Init(); err != nil {
+		panic(err)
+	}
+	defer termbox.Close()
 
 	go keyListener(events)
-	go monitorTxs(db, events)
+	monitor(db, events)
+}
 
-	tx, err := db.Begin()
-	if err != nil {
-		fmt.Println("failed to begin transaction:", err)
-		return
+type mon func(*sql.DB, chan keyEvent) mon
+
+func monitor(db *sql.DB, events chan keyEvent) {
+	var todo = monitorTxs
+
+	for {
+		if todo = todo(db, events); todo == nil {
+			break
+		}
 	}
-
-	rows, err := tx.Query("select * from innotoptesting.hello")
-	if err != nil {
-		fmt.Println("failed to query table:", err)
-	}
-
-	<-time.After(time.Second * 15)
-
-	rows.Close()
-	tx.Rollback()
 }
 
 type columnInfo struct {
@@ -97,6 +97,16 @@ func keyListener(events chan keyEvent) {
 			go func() {
 				events <- quitEvent
 			}()
+		} else if event.Type == termbox.EventKey {
+			if event.Ch == 'Q' {
+				go func() {
+					events <- queryList
+				}()
+			} else if event.Ch == 'T' {
+				go func() {
+					events <- txList
+				}()
+			}
 		}
 	}
 }
@@ -105,15 +115,11 @@ type keyEvent int
 
 const (
 	quitEvent keyEvent = iota
+	queryList
+	txList
 )
 
-func monitorTxs(db *sql.DB, events chan keyEvent) {
-	err := termbox.Init()
-	if err != nil {
-		panic(err)
-	}
-	defer termbox.Close()
-
+func monitorTxs(db *sql.DB, events chan keyEvent) mon {
 	drawTitles(1)
 	count := 0
 
@@ -127,7 +133,10 @@ func monitorTxs(db *sql.DB, events chan keyEvent) {
 		select {
 		case eve := <-events:
 			if eve == quitEvent {
-				return
+				return nil
+			} else if eve == queryList {
+				clearRows(rowStart, rowStart+oldRowNum, ww)
+				return monitorQueries
 			}
 		case <-ticker:
 
@@ -145,12 +154,7 @@ func monitorTxs(db *sql.DB, events chan keyEvent) {
 
 		rowNum := rowStart
 
-		// clear old rows
-		for i := rowStart; i < rowStart+oldRowNum; i++ {
-			for x := 0; x < ww; x++ {
-				termbox.SetCell(x, i, ' ', colWhite, colDef)
-			}
-		}
+		clearRows(rowStart, rowStart+oldRowNum, ww)
 
 		// ID, State, Started, MemoryUsed
 		for rows.Next() {
@@ -204,6 +208,16 @@ func monitorTxs(db *sql.DB, events chan keyEvent) {
 		rows.Close()
 		termbox.Flush()
 	}
+
+	return nil
+}
+
+func clearRows(i0, iN, width int) {
+	for i := i0; i < iN; i++ {
+		for x := 0; x < width; x++ {
+			termbox.SetCell(x, i, ' ', colWhite, colDef)
+		}
+	}
 }
 
 // term colors
@@ -211,3 +225,95 @@ var (
 	colWhite = termbox.ColorWhite
 	colDef   = termbox.ColorDefault
 )
+
+func monitorQueries(db *sql.DB, events chan keyEvent) mon {
+	drawTitles(1)
+	count := 0
+
+	oldRowNum := 0
+	rowStart := 4 // incase we want to move stuff later?
+	ww, _ := termbox.Size()
+
+	ticker := time.Tick(time.Second)
+
+	for {
+		select {
+		case eve := <-events:
+			if eve == quitEvent {
+				return nil
+			} else if eve == txList {
+				clearRows(rowStart, rowStart+oldRowNum, ww)
+				return monitorTxs
+			}
+		case <-ticker:
+
+		}
+
+		count++
+		if count > 10 {
+			break
+		}
+		rows, err := db.Query("select * from information_schema.PROCESSLIST")
+		if err != nil {
+			fmt.Println("failed to query transactions:", err)
+			continue
+		}
+
+		rowNum := rowStart
+
+		// clear old rows
+		clearRows(rowStart, rowStart+oldRowNum, ww)
+
+		// ID, State, Started, MemoryUsed
+		for rows.Next() {
+			var i innotop.ProcessInfo
+			if err = rows.Scan(
+				&i.ID, &i.User, &i.Host, &i.DB,
+				&i.Command, &i.Time, &i.State, &i.Info,
+				&i.TimeMS, &i.Stage, &i.MaxStage, &i.Progress,
+				&i.MemoryUsed, &i.ExaminedRow, &i.QueryID,
+			); err != nil {
+				fmt.Println("failed to read transaction:", err)
+				break
+			}
+
+			// add the Transaction ID
+			cursor := 2
+			for _, run := range strconv.FormatInt(i.ID, 10) {
+				termbox.SetCell(
+					cursor,
+					rowNum,
+					run,
+					termbox.ColorWhite,
+					termbox.ColorDefault)
+				cursor++
+			}
+
+			cursor = 27
+			for _, run := range i.User {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+			}
+
+			// it's plus 25 from previous cursor position each time
+			cursor = 52
+			for _, run := range string(i.Host) {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+			}
+
+			cursor = 77
+			for _, run := range strconv.FormatInt(int64(i.MemoryUsed), 10) {
+				termbox.SetCell(cursor, rowNum, run, colWhite, colDef)
+				cursor++
+			}
+
+			rowNum++
+		}
+		oldRowNum = rowNum - rowStart
+		rows.Close()
+		termbox.Flush()
+	}
+
+	return nil
+}
