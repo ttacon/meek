@@ -10,7 +10,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/nsf/termbox-go"
-	"github.com/ttacon/innotop/innotop"
+	"github.com/ttacon/innotop"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
