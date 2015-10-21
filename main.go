@@ -19,7 +19,9 @@ var (
 
 	// flags
 	username          = flag.String("u", "", "username")
+	host              = flag.String("h", "localhost", "host to connect to")
 	password          = flag.String("-password", "", "password")
+	port              = flag.Int("P", 3306, "port database server is bound to")
 	promptForPassword = flag.Bool("p", false, "prompt for password")
 )
 
@@ -38,7 +40,7 @@ func main() {
 	}
 
 	var err error
-	if db, err = sql.Open("mysql", fmt.Sprintf("%s:%s@/", *username, passwd)); err != nil {
+	if db, err = sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%d)/", *username, passwd, *host, *port)); err != nil {
 		fmt.Println("failed to connect to db:", err)
 		os.Exit(1)
 	} else if err = db.Ping(); err != nil {
