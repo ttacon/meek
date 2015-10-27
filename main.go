@@ -20,7 +20,7 @@ var (
 	// flags
 	username          = flag.String("u", "", "username")
 	host              = flag.String("h", "localhost", "host to connect to")
-	password          = flag.String("-password", "", "password")
+	password          = flag.String("password", "", "password")
 	port              = flag.Int("P", 3306, "port database server is bound to")
 	promptForPassword = flag.Bool("p", false, "prompt for password")
 )
