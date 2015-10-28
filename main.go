@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -198,17 +199,20 @@ func monitorTxs(db *sql.DB, events chan keyEvent) mon {
 
 		clearRows(rowStart, rowStart+oldRowNum, ww)
 
+		colNames, err := rows.Columns()
+		if err != nil {
+			// well that sucks
+			// TODO(ttacon): make a way to report errors using termbox
+			// most likely "flash params" above chart/table
+			continue
+		}
+
+		fieldsFor := columnRetrieveFunction(colNames, innotop.InnoDBTransaction{})
+
 		// ID, State, Started, MemoryUsed, Op State, RowsLocked, ROnly, Query
 		for rows.Next() {
 			var i innotop.InnoDBTransaction
-			if err = rows.Scan(
-				&i.ID, &i.State, &i.Started, &i.RequestedLockID,
-				&i.WaitStarted, &i.Weight, &i.MySQLThreadID, &i.Query,
-				&i.OperationState, &i.TablesInUse, &i.TablesLocked, &i.LockStructs,
-				&i.LockMemoryBytes, &i.RowsLocked, &i.RowsModified, &i.ConcurrencyTickets,
-				&i.IsolationLevel, &i.UniqueChecks, &i.ForeignKeyChecks, &i.LastForeignKeyError,
-				&i.AdaptiveHashLatched, &i.AdaptiveHashTimeout, &i.IsReadOnly, &i.AutocommitNonLocking,
-			); err != nil {
+			if err = rows.Scan(fieldsFor(&i)...); err != nil {
 				fmt.Println("failed to read transaction:", err)
 				break
 			}
@@ -340,15 +344,20 @@ func monitorQueries(db *sql.DB, events chan keyEvent) mon {
 		// clear old rows
 		clearRows(rowStart, rowStart+oldRowNum, ww)
 
+		colNames, err := rows.Columns()
+		if err != nil {
+			// well that sucks
+			// TODO(ttacon): make a way to report errors using termbox
+			// most likely "flash params" above chart/table
+			continue
+		}
+
+		fieldsFor := columnRetrieveFunction(colNames, innotop.ProcessInfo{})
+
 		// ID, State, Started, MemoryUsed
 		for rows.Next() {
 			var i innotop.ProcessInfo
-			if err = rows.Scan(
-				&i.ID, &i.User, &i.Host, &i.DB,
-				&i.Command, &i.Time, &i.State, &i.Info,
-				&i.TimeMS, &i.Stage, &i.MaxStage, &i.Progress,
-				&i.MemoryUsed, &i.ExaminedRow, &i.QueryID,
-			); err != nil {
+			if err = rows.Scan(fieldsFor(&i)...); err != nil {
 				fmt.Println("failed to read transaction:", err)
 				break
 			}
@@ -462,4 +471,34 @@ func tim(sec32 int32) string {
 	}
 
 	return fmt.Sprintf("%0.2d:%0.2d:%0.2d", hours, mins, seconds)
+}
+
+func columnRetrieveFunction(cols []string, i interface{}) func(i interface{}) []interface{} {
+	// TODO(ttacon): make innotop structs not need reflection to get
+	// desired fields
+	typ := reflect.TypeOf(i)
+	var ordering = make([]int, len(cols))
+	for k, col := range cols {
+		for j := 0; j < typ.NumField(); j++ {
+			field := typ.Field(j)
+			if field.Tag.Get("mysql") == col {
+				ordering[k] = j
+				break
+			}
+		}
+	}
+
+	// THIS IS ONLY A PROTOTYPE FUNCTION
+	// TODO(ttacon): lots of cleanup...
+
+	return func(i interface{}) []interface{} {
+		val := reflect.ValueOf(i)
+
+		var toSet = make([]interface{}, len(ordering))
+		for j, fieldIndex := range ordering {
+			toSet[j] = val.Elem().Field(fieldIndex).Addr().Interface()
+		}
+
+		return toSet
+	}
 }
